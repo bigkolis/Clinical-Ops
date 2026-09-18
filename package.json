@@ -1,7 +1,7 @@
 {
   "name": "clinical-ops-workspace",
   "private": true,
-  "version": "0.9.1",
+  "version": "1.0.0",
   "type": "module",
   "engines": { "node": ">=20.19.0" },
   "scripts": {
@@ -10,8 +10,9 @@
     "dev": "vite --host 0.0.0.0",
     "prebuild": "npm run assemble",
     "build": "vite build",
+    "start": "node server.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "npm run assemble && node --check src/app2.js && node --check src/login-polish.js && node --check src/clinical.js && node --check src/labels.js && node --check src/reports.js && node --check api/auth.js && node --check api/workspace.js && node --check api/snapshot.js && node --check api/operator.js && node --check api/health.js && node --check lib/core.js"
+    "check": "npm run assemble && node --check src/app2.js && node --check public/runtime-guard.js && node --check src/clinical.js && node --check src/labels.js && node --check src/reports.js && node --check api/auth.js && node --check api/workspace.js && node --check api/snapshot.js && node --check api/operator.js && node --check api/health.js && node --check lib/core.js && node --check server.mjs"
   },
   "dependencies": {
     "jszip": "3.10.1",
