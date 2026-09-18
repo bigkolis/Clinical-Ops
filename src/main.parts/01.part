@@ -13,7 +13,7 @@ const BUILTIN_BROWSER_USERS={
   'milana':{name:'Milana',role:'milana',hash:'bdd4dabbc3edc6db40d4404768cccd1465c56e5bfeb56be922283b851c8620d2'},
   'clinical-ops':{name:'Clinical Ops Staff',role:'staff',hash:'ddee1359279bab58fde766f9c59f2aaf9176823695844b4254407df0ed9917bf'}
 };
-const state={user:null,page:'overview',site:'10',selectRows:[],visitRows:[],patients:[],notes:{},audit:[],db:false,labels:[],selected:null,filterProblems:false,search:'',busy:false};
+const state={user:null,page:'overview',site:'',sites:[],selectRows:[],visitRows:[],patients:[],notes:{},audit:[],db:false,labels:[],selected:null,filterProblems:false,search:'',busy:false};
 const $=(s,root=document)=>root.querySelector(s), $$=(s,root=document)=>[...root.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const dateKey=d=>d?new Date(d).toISOString().slice(0,10):'';
@@ -37,6 +37,40 @@ async function builtinLogin(login,password){
   if(!rec)return null;
   const hash=await sha256Hex(`clinical-ops-v1:${login}:${password}`);
   return hash===rec.hash?{login,name:rec.name,role:rec.role}:null;
+}
+function normalizeSite(value){
+  const s=String(value??'').trim();
+  if(!s)return '';
+  return /^\d+\.0+$/.test(s)?String(parseInt(s,10)):s;
+}
+function inferSiteFromId(value){
+  const s=String(value??'').trim();
+  const m=s.match(/^([A-Za-z0-9]+)-/);
+  return m?normalizeSite(m[1]):'';
+}
+function rowSite(row){
+  const direct=normalizeSite(row?.['Site #']??row?.['Site']??row?.['Site No']??row?.['Site Number']);
+  if(direct)return direct;
+  return inferSiteFromId(row?.['Столбец1']??row?.['Screening #']??row?.['Randomization #']);
+}
+function discoverSites(){
+  const found=new Set();
+  [...state.selectRows,...state.visitRows].forEach(r=>{const s=rowSite(r);if(s)found.add(s);});
+  state.sites=[...found].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
+  if(!state.sites.includes(state.site)) state.site=state.sites[0]||'';
+  return state.sites;
+}
+function siteOptions(){
+  if(!state.sites.length)return '<option value="">Import data…</option>';
+  return state.sites.map(s=>`<option value="${esc(s)}" ${s===state.site?'selected':''}>Site ${esc(s)}</option>`).join('');
+}
+function refreshSiteSelector(){
+  discoverSites();
+  const sel=$('#siteSel');
+  if(!sel)return;
+  sel.innerHTML=siteOptions();
+  sel.disabled=!state.sites.length;
+  if(state.site)sel.value=state.site;
 }
 
 async function boot(){
@@ -87,11 +121,12 @@ function renderLogin(){
 }
 
 function renderShell(){
+  discoverSites();
   document.body.className=`role-${state.user.role}`;
   $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand side"><span class="brand-mark">CO</span><div><strong>Clinical Ops</strong><small>CL04041383</small></div></div>
     <nav>${nav('overview','Overview','⌂')}${nav('patients','Patients','◎')}${nav('actions','Action Center','!')}${nav('labels','Labels','▣')}${nav('reports','Reports','▤')}${nav('data','Data','⇅')}${state.user.role==='milana'?'<div class="nav-rule"></div>'+nav('ai','Semyon AI','✦'):''}</nav>
     <div class="sidebar-foot"><div class="privacy"><i></i><div><strong>Local source data</strong><span>XLSX bytes stay in this browser</span></div></div></div></aside>
-    <section class="workspace"><header class="topbar"><div><span class="study">Study CL04041383</span><select id="siteSel"><option value="10">Site 10</option></select></div><div class="top-actions"><button id="importBtn" class="btn ghost">Import XLSX</button><div class="user"><span>${esc(initials(state.user.name))}</span><div><strong>${esc(state.user.name)}</strong><small>${state.user.role==='milana'?'Admin · AI enabled':'Staff'}</small></div></div><button id="logoutBtn" class="icon-btn" title="Sign out">↗</button></div></header><main id="view"></main></section></div><input id="filePicker" type="file" multiple accept=".xlsx,.xls" hidden>`;
+    <section class="workspace"><header class="topbar"><div><span class="study">Study CL04041383</span><select id="siteSel" ${state.sites.length?'':'disabled'}>${siteOptions()}</select></div><div class="top-actions"><button id="importBtn" class="btn ghost">Import XLSX</button><div class="user"><span>${esc(initials(state.user.name))}</span><div><strong>${esc(state.user.name)}</strong><small>${state.user.role==='milana'?'Admin · AI enabled':'Staff'}</small></div></div><button id="logoutBtn" class="icon-btn" title="Sign out">↗</button></div></header><main id="view"></main></section></div><input id="filePicker" type="file" multiple accept=".xlsx,.xls" hidden>`;
   $$('.nav-item').forEach(b=>b.onclick=()=>{state.page=b.dataset.page; $$('.nav-item').forEach(x=>x.classList.toggle('active',x===b)); renderPage();});
   $('#importBtn').onclick=()=>$('#filePicker').click(); $('#filePicker').onchange=e=>importFiles([...e.target.files]);
   $('#logoutBtn').onclick=logout; $('#siteSel').onchange=e=>{state.site=e.target.value; derive();syncWorkspace();}; renderPage();
