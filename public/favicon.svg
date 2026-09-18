@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Clinical Ops">
+  <defs>
+    <linearGradient id="bg" x1="15" y1="8" x2="116" y2="122"><stop stop-color="#09204A"/><stop offset="1" stop-color="#07152F"/></linearGradient>
+    <linearGradient id="loop" x1="18" y1="35" x2="111" y2="95" gradientUnits="userSpaceOnUse"><stop stop-color="#1F58A5"/><stop offset=".52" stop-color="#12A7DA"/><stop offset="1" stop-color="#35EDC7"/></linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <path d="M40 43c-17 0-29 11-29 25s12 25 29 25c17 0 28-11 39-25 11-13 21-25 37-25 15 0 28 11 28 25s-13 25-28 25c-13 0-22-7-30-16" fill="none" stroke="url(#loop)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
