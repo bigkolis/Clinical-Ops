@@ -6,7 +6,12 @@
   $('#labelExportExcel')?.addEventListener('click',()=>runLabelExport(exportLabelExcel));
   $('#labelExportPdf')?.addEventListener('click',()=>runLabelExport(exportLabelPdf));
   $('#printLabels')?.addEventListener('click',()=>{updateLabelMeta();printLabels();});
-  $('#printReport')?.addEventListener('click',printReport); ['rVisit','rDates','rSite'].forEach(id=>$('#'+id)?.addEventListener('input',()=>{$('#reportText').textContent=`IMV #${$('#rVisit').value} · ${$('#rDates').value}`;}));
+  $('#loadReport')?.addEventListener('click',()=>$('#reportFilePicker').click());
+  ['rVisit','rDates','rSite','rMon','rSummary'].forEach(id=>$('#'+id)?.addEventListener('input',updateReportState));
+  $('#reportExportWord')?.addEventListener('click',()=>runReportExport(exportReportWord));
+  $('#reportExportExcel')?.addEventListener('click',()=>runReportExport(exportReportExcel));
+  $('#reportExportPdf')?.addEventListener('click',()=>runReportExport(exportReportPdf));
+  $('#printReport')?.addEventListener('click',()=>{updateReportState();printReport();});
   $('#dataImport')?.addEventListener('click',()=>$('#filePicker').click());
   $$('[data-ai]').forEach(b=>b.onclick=()=>{$('#aiPrompt').value=b.dataset.ai;}); $('#prepareAi')?.addEventListener('click',prepareAi);
 }
@@ -39,6 +44,21 @@ async function importLabelFiles(files){
     const s=$('#labelExportStatus');if(s)s.textContent=msg;else alert(msg);
   }finally{
     const p=$('#labelFilePicker');if(p)p.value='';
+  }
+}
+async function importReportFiles(files){
+  if(!files.length)return;
+  try{
+    const result=await importReportFile(files[0]);
+    state.report={...state.report,...result,visit:result.visit||state.report.visit||'',dates:result.dates||state.report.dates||'',site:result.site||state.report.site||state.site||'',monitor:result.monitor||state.report.monitor||''};
+    renderPage();
+    const s=$('#reportExportStatus');if(s)s.textContent=`Imported ${result.sourceType}: ${result.source}`;
+  }catch(err){
+    console.error('Report import failed',err);
+    const msg=err?.message||'Could not import report file.';
+    const s=$('#reportExportStatus');if(s)s.textContent=msg;else alert(msg);
+  }finally{
+    const p=$('#reportFilePicker');if(p)p.value='';
   }
 }
 async function readWorkbook(file){const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:'array',cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws,{defval:null,raw:false,dateNF:'yyyy-mm-dd'});}
