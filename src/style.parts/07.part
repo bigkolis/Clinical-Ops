@@ -1,0 +1,56 @@
+
+/* Mobile login brand lockup — intentionally overrides older hero/logo rules. */
+@media(max-width:760px){
+  .login-art{padding-top:22px!important;padding-left:22px!important;padding-right:22px!important}
+  .login-art>.brand,
+  .login-art .brand-logo{
+    width:auto!important;
+    height:auto!important;
+    min-height:0!important;
+    margin:0 0 26px 0!important;
+    padding:0!important;
+    background:none!important;
+    display:inline-flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:10px!important;
+  }
+  .login-art>.brand>*{visibility:visible!important}
+  .login-art .brand-logo img{
+    width:48px!important;
+    height:48px!important;
+    max-width:48px!important;
+    max-height:48px!important;
+    object-fit:contain!important;
+    flex:0 0 48px!important;
+  }
+  .login-art .brand-logo>div{display:block!important;line-height:1!important}
+  .login-art .brand-logo strong{
+    display:block!important;
+    color:#fff!important;
+    font-size:21px!important;
+    line-height:1.02!important;
+    letter-spacing:-.035em!important;
+    white-space:nowrap!important;
+  }
+  .login-art .brand-logo strong::after{content:''}
+  .login-art .brand-logo small{
+    display:block!important;
+    margin-top:6px!important;
+    color:#8fa6c5!important;
+    font-size:7px!important;
+    line-height:1!important;
+    letter-spacing:.32em!important;
+    text-transform:uppercase!important;
+    white-space:nowrap!important;
+  }
+  .login-copy{max-width:100%!important}
+  .login-copy .eyebrow{font-size:7px!important;letter-spacing:.17em!important}
+  .login-copy h1{margin-top:9px!important}
+}
+@media(max-width:390px){
+  .login-art{padding-left:18px!important;padding-right:18px!important}
+  .login-art .brand-logo img{width:44px!important;height:44px!important;max-width:44px!important;max-height:44px!important;flex-basis:44px!important}
+  .login-art .brand-logo strong{font-size:19px!important}
+  .login-art .brand-logo small{font-size:6.5px!important}
+}
