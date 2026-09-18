@@ -9,6 +9,10 @@ const VISITS=[
 ];
 const BASELINE={'10-01':2,'10-04':2,'10-05':2,'10-10':4,'10-11':4,'10-12':4,'10-13':4,'10-14':2,'10-15':4,'10-17':4,'10-18':4,'10-19':2,'10-20':2,'10-21':4,'10-22':4};
 const REGCOL={1:['V0_DISP_REGIMEN','V0_DISP_REGIMEN1'],2:['V2_DISP_REGIMEN','V2_DISP_REGIMEN1'],3:['V3_DISP_REGIMEN','V3_DISP_REGIMEN1'],4:['V4_DISP_REGIMEN','V4_DISP_REGIMEN1'],5:['V5_DISP_REGIMEN','V5_DISP_REGIMEN1'],6:['V6_DISP_REGIMEN','V6_DISP_REGIMEN1'],7:['V7_DISP_REGIMEN','V7_DISP_REGIMEN1'],8:['V8_DISP_REGIMEN','V8_DISP_REGIMEN1'],9:['V9_DISP_REGIMEN','V9_DISP_REGIMEN1'],10:['V10_DISP_REGIMEN','V10_DISP_REGIMEN1'],11:['V11_DISP_REGIMEN','V11_DISP_REGIMEN1']};
+const BUILTIN_BROWSER_USERS={
+  'milana':{name:'Milana',role:'milana',hash:'bdd4dabbc3edc6db40d4404768cccd1465c56e5bfeb56be922283b851c8620d2'},
+  'clinical-ops':{name:'Clinical Ops Staff',role:'staff',hash:'ddee1359279bab58fde766f9c59f2aaf9176823695844b4254407df0ed9917bf'}
+};
 const state={user:null,page:'overview',site:'10',selectRows:[],visitRows:[],patients:[],notes:{},audit:[],db:false,labels:[],selected:null,filterProblems:false,search:'',busy:false};
 const $=(s,root=document)=>root.querySelector(s), $$=(s,root=document)=>[...root.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -23,10 +27,21 @@ async function authFetch(url,options={}){
   if(token) headers.set('Authorization',`Basic ${token}`);
   return fetch(url,{...options,headers});
 }
+async function sha256Hex(text){
+  const bytes=new TextEncoder().encode(text);
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function builtinLogin(login,password){
+  const rec=BUILTIN_BROWSER_USERS[login];
+  if(!rec)return null;
+  const hash=await sha256Hex(`clinical-ops-v1:${login}:${password}`);
+  return hash===rec.hash?{login,name:rec.name,role:rec.role}:null;
+}
 
 async function boot(){
   let user=null;
-  try{ const r=await authFetch('/api/auth'); const j=await r.json(); if(j.authenticated) user=j.user; }catch{}
+  try{ const r=await authFetch('/api/auth'); if(r.ok){const j=await r.json(); if(j.authenticated) user=j.user;} }catch{}
   state.user=user;
   if(user){ loadLocal(); renderShell(); await syncWorkspace(); } else { sessionStorage.removeItem('clinical_ops_auth'); renderLogin(); }
 }
@@ -37,11 +52,38 @@ function renderLogin(){
     <section class="login-art"><div class="brand"><span class="brand-mark">CO</span><div><strong>Clinical Ops</strong><small>Workspace</small></div></div>
       <div class="login-copy"><div class="eyebrow">CLINICAL OPERATIONS · 2026</div><h1>Workflows without<br><span>spreadsheet archaeology.</span></h1><p>Patient visits, dosing changes, deviations, labels and reports — one calm workspace over the source exports.</p></div>
       <div class="trust"><span>Source XLSX stays local</span><span>Staff-ready</span><span>Milana AI layer</span></div></section>
-    <section class="login-panel"><form id="loginForm" class="login-card"><div class="kicker">SECURE WORKSPACE</div><h2>Sign in</h2><p>Use the Staff account for daily work or Milana account for operator/AI access.</p>
+    <section class="login-panel"><form id="loginForm" class="login-card" novalidate><div class="kicker">SECURE WORKSPACE</div><h2>Sign in</h2><p>Use the Staff account for daily work or Milana account for operator/AI access.</p>
       <label>Login<input name="login" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="btn primary wide">Enter workspace</button><div id="loginError" class="login-error"></div>
+      <button id="loginButton" type="submit" class="btn primary wide">Enter workspace</button><div id="loginError" class="login-error" role="alert"></div>
     </form></section></main>`;
-  $('#loginForm').onsubmit=async e=>{e.preventDefault(); const fd=new FormData(e.currentTarget); const login=String(fd.get('login')||'').trim(), password=String(fd.get('password')||''); const r=await fetch('/api/auth?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password})}); const j=await r.json(); if(!r.ok){$('#loginError').textContent=j.error||'Login failed';return;} sessionStorage.setItem('clinical_ops_auth',btoa(`${login}:${password}`)); state.user=j.user; loadLocal(); renderShell(); await syncWorkspace();};
+  const form=$('#loginForm'), button=$('#loginButton'), error=$('#loginError');
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    if(state.busy)return;
+    const fd=new FormData(form), login=String(fd.get('login')||'').trim(), password=String(fd.get('password')||'');
+    if(!login||!password){error.textContent='Enter login and password.';return;}
+    state.busy=true; button.disabled=true; button.textContent='Signing in…'; error.textContent='';
+    try{
+      let user=null;
+      try{
+        const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000);
+        const r=await fetch('/api/auth?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password}),signal:controller.signal});
+        clearTimeout(timer);
+        const text=await r.text(); let j={}; try{j=text?JSON.parse(text):{};}catch{}
+        if(r.ok&&j.user) user=j.user;
+        else if(r.status===401){error.textContent=j.error||'Invalid login or password';return;}
+      }catch{}
+      if(!user) user=await builtinLogin(login,password);
+      if(!user){error.textContent='Could not sign in. Check credentials or hosting API configuration.';return;}
+      sessionStorage.setItem('clinical_ops_auth',btoa(`${login}:${password}`));
+      state.user=user; loadLocal(); renderShell(); await syncWorkspace();
+    }catch(err){
+      console.error('Login failed',err); error.textContent='Login failed unexpectedly. Refresh and try again.';
+    }finally{
+      state.busy=false;
+      const b=$('#loginButton'); if(b){b.disabled=false;b.textContent='Enter workspace';}
+    }
+  });
 }
 
 function renderShell(){
