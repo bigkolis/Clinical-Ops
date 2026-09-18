@@ -106,6 +106,20 @@
     }
   }
 
+  function ensureSecurityNav(){
+    if(!document.body.classList.contains('role-milana'))return;
+    const nav=document.querySelector('.sidebar nav');
+    if(!nav||nav.querySelector('#securityAuditNav'))return;
+    const button=document.createElement('button');
+    button.id='securityAuditNav';button.className='nav-item';button.type='button';
+    button.innerHTML='<span>⛨</span>Security';
+    button.addEventListener('click',()=>{
+      document.querySelector('.nav-item[data-page="ai"]')?.click();
+      setTimeout(async()=>{await injectSecurityAudit();document.querySelector('#securityAudit')?.scrollIntoView({behavior:'smooth',block:'start'});},120);
+    });
+    nav.appendChild(button);
+  }
+
   function polishLabels(){
     const btn=document.querySelector('#printLabels');
     if(btn&&btn.textContent!=='Print sheet (A4)')btn.textContent='Print sheet (A4)';
@@ -149,6 +163,7 @@
       enhanceLogin();
       polishLabels();
       verifyServerSession();
+      ensureSecurityNav();
       injectSecurityAudit();
     });
   };
