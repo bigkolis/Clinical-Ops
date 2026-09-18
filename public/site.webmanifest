@@ -1,0 +1,17 @@
+{
+  "name": "Clinical Ops Workspace",
+  "short_name": "Clinical Ops",
+  "description": "Clinical operations workspace for visits, deviations, labels and reports.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07152F",
+  "theme_color": "#0B1728",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
