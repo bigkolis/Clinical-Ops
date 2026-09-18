@@ -1,0 +1,27 @@
+
+/* Milana mobile admin navigation */
+.sidebar .nav-item{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.admin-panel-open{overflow:hidden!important}
+.admin-security-panel{position:fixed;inset:0;z-index:220;background:rgba(8,20,38,.42);display:flex;justify-content:flex-end;backdrop-filter:blur(4px)}
+.admin-security-head,.admin-security-body{background:#f4f7fb}
+.admin-security-panel>header,.admin-security-panel>.admin-security-body{width:min(620px,100%)}
+.admin-security-head{position:absolute;right:0;top:0;width:min(620px,100%);padding:26px 26px 20px;border-bottom:1px solid var(--line);z-index:2}
+.admin-security-head h1{margin:6px 0 6px;font-size:31px;letter-spacing:-.04em;color:#17283f}
+.admin-security-head p{margin:0;color:#748398;font-size:10px;line-height:1.5}
+.admin-security-close{position:absolute;right:20px;top:20px;width:42px;height:42px;border:1px solid var(--line);border-radius:13px;background:#fff;color:#41546d;font-size:25px;line-height:1;cursor:pointer}
+.admin-security-body{height:100%;padding:132px 26px 28px;overflow:auto}
+.security-summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#fff;font-size:9px;color:#6b7a8e}
+.security-summary b,.security-mode{font-size:8px;color:#2e425d}
+.security-audit-list{display:grid;gap:8px}
+.security-event{display:grid;grid-template-columns:110px 1fr auto;gap:8px 12px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#fff}
+.security-event span,.security-event small{font-size:8px;color:#8794a4}.security-event strong{font-size:10px;color:#253952}.security-event b{font-size:8px;text-transform:uppercase;letter-spacing:.06em}.security-event small{grid-column:2/-1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.security-event.ok b{color:var(--green)}.security-event.fail{border-color:#efd2d2;background:#fffafa}.security-event.fail b{color:var(--red)}
+#securityAuditNav.active{color:#fff;background:rgba(255,255,255,.10)}
+@media(max-width:760px){
+  .admin-security-panel{display:block;background:#f4f7fb;backdrop-filter:none;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  .admin-security-head{position:fixed;left:0;right:0;top:0;width:100%;padding:calc(18px + env(safe-area-inset-top)) 62px 15px 16px;background:#f4f7fb}
+  .admin-security-head h1{font-size:27px;margin-top:5px}.admin-security-head p{font-size:10px}
+  .admin-security-close{right:14px;top:calc(14px + env(safe-area-inset-top));width:40px;height:40px}
+  .admin-security-body{width:100%;height:100%;padding:calc(112px + env(safe-area-inset-top)) 14px calc(26px + env(safe-area-inset-bottom));overflow:auto;-webkit-overflow-scrolling:touch}
+  .security-event{grid-template-columns:1fr auto;padding:12px}.security-event span{grid-column:1}.security-event strong{grid-column:1}.security-event b{grid-column:2;grid-row:1/3;align-self:center}.security-event small{grid-column:1/-1;white-space:normal;line-height:1.4}
+  .sidebar nav{touch-action:pan-x}.sidebar .nav-item{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+}
