@@ -1,7 +1,6 @@
-import { authenticate, actorName, db, dbEnabled, ensureSchema } from '../lib/core.js';
+import { authenticate, actorName, db, dbEnabled, ensureSchema, sameOriginWrite } from '../lib/core.js';
 const allowedStudies=new Set(['CL04041383','CL04041109']);
 const cleanStudy=v=>allowedStudies.has(String(v||''))?String(v):'CL04041383';
-const annotationSelect=sql=>sql`SELECT site_id,patient_id,visit_no,note_text,override_date,override_regimen,deviation_reason,deviation_no,deviation_status,deviation_owner,updated_by,updated_role,updated_at FROM clinical_ops_annotations`;
 export default async function handler(req,res){
   const user=authenticate(req);if(!user)return res.status(401).json({error:'Unauthorized'});
   const study=cleanStudy(req.query?.study||req.body?.study),site=String(req.query?.site||req.body?.site||'');
@@ -19,6 +18,7 @@ export default async function handler(req,res){
     return res.status(200).json({enabled:true,annotations,audit});
   }
   if(req.method==='POST'){
+    if(!sameOriginWrite(req))return res.status(403).json({error:'Cross-site write rejected'});
     const {patient,visit,mode='save'}=req.body||{};const v=Number(visit);
     if(!site||!patient||!Number.isInteger(v))return res.status(400).json({error:'Invalid patient/visit payload'});
     const existing=await sql`SELECT note_text,override_date,override_regimen,deviation_reason,deviation_no,deviation_status,deviation_owner,updated_by,updated_role,updated_at FROM clinical_ops_annotations WHERE study_code=${study} AND site_id=${site} AND patient_id=${String(patient)} AND visit_no=${v}`;
