@@ -1,4 +1,4 @@
-import { authenticate, publicUser, credentials, issueSession, sessionCookie, clearSessionCookie, sanitizeInitials, dbEnabled, db, ensureSchema, auditIpHash, sessionSecurityMode } from '../lib/core.js';
+import { authenticate, publicUser, credentials, issueSession, sessionCookie, clearSessionCookie, sanitizeInitials, dbEnabled, db, ensureSchema, auditIpHash, sessionSecurityMode, sameOriginWrite } from '../lib/core.js';
 
 const memoryAttempts=new Map();
 function userAgent(req){return String(req.headers?.['user-agent']||'').slice(0,240);}
@@ -8,15 +8,19 @@ function memoryFail(key){const arr=memoryAttempts.get(key)||[];arr.push(Date.now
 function memorySuccess(key){memoryAttempts.delete(key);}
 async function recordEvent(req,{login='',role='',initials='',event='login',success=false}={}){
   if(!dbEnabled())return;
-  await ensureSchema();const sql=db();
-  await sql`INSERT INTO clinical_ops_login_audit(login,role,initials,event,success,ip_hash,user_agent) VALUES(${String(login).slice(0,120)||null},${String(role).slice(0,40)||null},${String(initials).slice(0,20)||null},${String(event).slice(0,40)},${Boolean(success)},${attemptKey(req)},${userAgent(req)||null})`;
+  try{
+    await ensureSchema();const sql=db();
+    await sql`INSERT INTO clinical_ops_login_audit(login,role,initials,event,success,ip_hash,user_agent) VALUES(${String(login).slice(0,120)||null},${String(role).slice(0,40)||null},${String(initials).slice(0,20)||null},${String(event).slice(0,40)},${Boolean(success)},${attemptKey(req)},${userAgent(req)||null})`;
+  }catch(err){console.error('login audit unavailable',err?.message||err);}
 }
 async function blocked(req){
   const key=attemptKey(req);
   if(!dbEnabled())return memoryBlocked(key);
-  await ensureSchema();const sql=db();
-  const [row]=await sql`SELECT count(*)::int AS n FROM clinical_ops_login_audit WHERE ip_hash=${key} AND success=false AND event='login' AND created_at > now()-interval '15 minutes'`;
-  return Number(row?.n||0)>=8;
+  try{
+    await ensureSchema();const sql=db();
+    const [row]=await sql`SELECT count(*)::int AS n FROM clinical_ops_login_audit WHERE ip_hash=${key} AND success=false AND event='login' AND created_at > now()-interval '15 minutes'`;
+    return Number(row?.n||0)>=8;
+  }catch{return memoryBlocked(key);}
 }
 
 export default async function handler(req,res){
@@ -27,13 +31,16 @@ export default async function handler(req,res){
       if(!user)return res.status(401).json({error:'Unauthorized'});
       if(user.role!=='milana')return res.status(403).json({error:'Milana role required'});
       if(!dbEnabled())return res.status(200).json({enabled:false,events:[],securityMode:sessionSecurityMode()});
-      await ensureSchema();const sql=db();
-      const events=await sql`SELECT login,role,initials,event,success,ip_hash,user_agent,created_at FROM clinical_ops_login_audit ORDER BY created_at DESC LIMIT 200`;
-      return res.status(200).json({enabled:true,events,securityMode:sessionSecurityMode()});
+      try{
+        await ensureSchema();const sql=db();
+        const events=await sql`SELECT login,role,initials,event,success,ip_hash,user_agent,created_at FROM clinical_ops_login_audit ORDER BY created_at DESC LIMIT 200`;
+        return res.status(200).json({enabled:true,events,securityMode:sessionSecurityMode()});
+      }catch{return res.status(503).json({enabled:false,events:[],securityMode:sessionSecurityMode(),error:'Audit database unavailable'});}
     }
     return res.status(200).json(user?{authenticated:true,user:publicUser(user),securityMode:sessionSecurityMode()}:{authenticated:false,securityMode:sessionSecurityMode()});
   }
   if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
+  if(!sameOriginWrite(req))return res.status(403).json({error:'Cross-site write rejected'});
 
   if(action==='logout'){
     const user=authenticate(req);
@@ -46,15 +53,16 @@ export default async function handler(req,res){
   const login=String(req.body?.login||'').trim(),password=String(req.body?.password||''),initials=sanitizeInitials(req.body?.initials||'');
   const user=credentials(login,password);
   if(!user){
-    if(!dbEnabled())memoryFail(attemptKey(req));
+    memoryFail(attemptKey(req));
     await recordEvent(req,{login,event:'login',success:false});
     return res.status(401).json({error:'Invalid login or password'});
   }
   if(user.role==='staff'&&initials.length<2){
+    memoryFail(attemptKey(req));
     await recordEvent(req,{login:user.login,role:user.role,initials,event:'login',success:false});
     return res.status(400).json({error:'Staff initials are required for audit.'});
   }
-  if(!dbEnabled())memorySuccess(attemptKey(req));
+  memorySuccess(attemptKey(req));
   const token=issueSession(user,initials);
   res.setHeader('Set-Cookie',sessionCookie(token));
   await recordEvent(req,{login:user.login,role:user.role,initials,event:'login',success:true});
