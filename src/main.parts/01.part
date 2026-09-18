@@ -1,0 +1,56 @@
+import * as XLSX from 'xlsx';
+import './styles.css';
+
+const VISITS=[
+  [1,0,0,'Screening / Visit 1 (Days - 14 - 0)'],[2,2,14,'Visit 2 / Week 2 (Day 14)'],[3,6,42,'Visit 3 / Week 6 (Day 42)'],
+  [4,10,70,'Visit 4 / Week 10 (Day 70)'],[5,16,112,'Visit 5 / Week 16 (Day 112)'],[6,22,154,'Visit 6 / Week 22 (Day 154)'],
+  [7,28,196,'Visit 7 / Week 28 (Day 196)'],[8,34,238,'Visit 8 / Week 34 (Day 238)'],[9,40,280,'Visit 9 / Week 40 (Day 280)'],
+  [10,46,322,'Visit 10 / Week 46 (Day 322)'],[11,54,378,'Visit 11 / Week 54 (Day 378)']
+];
+const BASELINE={'10-01':2,'10-04':2,'10-05':2,'10-10':4,'10-11':4,'10-12':4,'10-13':4,'10-14':2,'10-15':4,'10-17':4,'10-18':4,'10-19':2,'10-20':2,'10-21':4,'10-22':4};
+const REGCOL={1:['V0_DISP_REGIMEN','V0_DISP_REGIMEN1'],2:['V2_DISP_REGIMEN','V2_DISP_REGIMEN1'],3:['V3_DISP_REGIMEN','V3_DISP_REGIMEN1'],4:['V4_DISP_REGIMEN','V4_DISP_REGIMEN1'],5:['V5_DISP_REGIMEN','V5_DISP_REGIMEN1'],6:['V6_DISP_REGIMEN','V6_DISP_REGIMEN1'],7:['V7_DISP_REGIMEN','V7_DISP_REGIMEN1'],8:['V8_DISP_REGIMEN','V8_DISP_REGIMEN1'],9:['V9_DISP_REGIMEN','V9_DISP_REGIMEN1'],10:['V10_DISP_REGIMEN','V10_DISP_REGIMEN1'],11:['V11_DISP_REGIMEN','V11_DISP_REGIMEN1']};
+const state={user:null,page:'overview',site:'10',selectRows:[],visitRows:[],patients:[],notes:{},audit:[],db:false,labels:[],selected:null,filterProblems:false,search:'',busy:false};
+const $=(s,root=document)=>root.querySelector(s), $$=(s,root=document)=>[...root.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const dateKey=d=>d?new Date(d).toISOString().slice(0,10):'';
+const fmt=d=>d?new Date(d).toLocaleDateString('ru-RU'):'—';
+const key=(p,v)=>`${state.site}|${p}|${v}`;
+const noteFor=(p,v)=>state.notes[key(p,v)]||{};
+
+async function boot(){
+  let user=null;
+  try{ const r=await fetch('/api/auth'); const j=await r.json(); if(j.authenticated) user=j.user; }catch{}
+  if(!user && new URLSearchParams(location.search).get('preview')==='1') user={login:'preview',name:'Milana Preview',role:'milana',preview:true};
+  state.user=user;
+  if(user){ loadLocal(); renderShell(); demoData(); await syncWorkspace(); } else renderLogin();
+}
+
+function renderLogin(){
+  document.body.className='login-page';
+  $('#app').innerHTML=`<main class="login-shell">
+    <section class="login-art"><div class="brand"><span class="brand-mark">CO</span><div><strong>Clinical Ops</strong><small>Workspace</small></div></div>
+      <div class="login-copy"><div class="eyebrow">CLINICAL OPERATIONS · 2026</div><h1>Workflows without<br><span>spreadsheet archaeology.</span></h1><p>Patient visits, dosing changes, deviations, labels and reports — one calm workspace over the source exports.</p></div>
+      <div class="trust"><span>Source XLSX stays local</span><span>Staff-ready</span><span>Milana AI layer</span></div></section>
+    <section class="login-panel"><form id="loginForm" class="login-card"><div class="kicker">SECURE WORKSPACE</div><h2>Sign in</h2><p>Use the Staff account for daily work or Milana account for operator/AI access.</p>
+      <label>Login<input name="login" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary wide">Enter workspace</button><div id="loginError" class="login-error"></div>
+      <div class="preview-help">For local UI testing: append <code>?preview=1</code>.</div></form></section></main>`;
+  $('#loginForm').onsubmit=async e=>{e.preventDefault(); const fd=new FormData(e.currentTarget); const r=await fetch('/api/auth?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:fd.get('login'),password:fd.get('password')})}); const j=await r.json(); if(!r.ok){$('#loginError').textContent=j.error||'Login failed';return;} state.user=j.user; renderShell(); demoData(); await syncWorkspace();};
+}
+
+function renderShell(){
+  document.body.className=`role-${state.user.role}`;
+  $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand side"><span class="brand-mark">CO</span><div><strong>Clinical Ops</strong><small>CL04041383</small></div></div>
+    <nav>${nav('overview','Overview','⌂')}${nav('patients','Patients','◎')}${nav('actions','Action Center','!')}${nav('labels','Labels','▣')}${nav('reports','Reports','▤')}${nav('data','Data','⇅')}${state.user.role==='milana'?'<div class="nav-rule"></div>'+nav('ai','Semyon AI','✦'):''}</nav>
+    <div class="sidebar-foot"><div class="privacy"><i></i><div><strong>Local source data</strong><span>XLSX bytes stay in this browser</span></div></div></div></aside>
+    <section class="workspace"><header class="topbar"><div><span class="study">Study CL04041383</span><select id="siteSel"><option value="10">Site 10</option></select></div><div class="top-actions"><button id="importBtn" class="btn ghost">Import XLSX</button><div class="user"><span>${esc(initials(state.user.name))}</span><div><strong>${esc(state.user.name)}</strong><small>${state.user.role==='milana'?'Admin · AI enabled':'Staff'}</small></div></div><button id="logoutBtn" class="icon-btn" title="Sign out">↗</button></div></header><main id="view"></main></section></div><input id="filePicker" type="file" multiple accept=".xlsx,.xls" hidden>`;
+  $$('.nav-item').forEach(b=>b.onclick=()=>{state.page=b.dataset.page; $$('.nav-item').forEach(x=>x.classList.toggle('active',x===b)); renderPage();});
+  $('#importBtn').onclick=()=>$('#filePicker').click(); $('#filePicker').onchange=e=>importFiles([...e.target.files]);
+  $('#logoutBtn').onclick=logout; $('#siteSel').onchange=e=>{state.site=e.target.value; derive();syncWorkspace();}; renderPage();
+}
+function nav(page,label,icon){return `<button class="nav-item ${state.page===page?'active':''}" data-page="${page}"><span>${icon}</span>${label}</button>`;}
+function initials(name){return String(name||'U').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();}
+async function logout(){ if(!state.user.preview) await fetch('/api/auth?action=logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); state.user=null; localStorage.removeItem('clinical_ops_user'); renderLogin(); }
+
+function renderPage(){ const v=$('#view'); if(!v)return; const map={overview,patients,actions,labels,reports,data,ai}; v.innerHTML=(map[state.page]||overview)(); bindPage(); }
+function pageHead(kicker,title,sub,actions=''){return `<div class="page-head"><div>
