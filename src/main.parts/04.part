@@ -1,6 +1,11 @@
 ,actionCsv()));
   $$('[data-save]').forEach(b=>b.onclick=()=>saveNote(b.dataset.save));
-  $('#loadLabels')?.addEventListener('click',()=>$('#filePicker').click()); $('#labelLayout')?.addEventListener('change',()=>{}); $('#printLabels')?.addEventListener('click',printLabels);
+  $('#loadLabels')?.addEventListener('click',()=>$('#labelFilePicker').click());
+  ['labelLayout','batch','mfg','exp'].forEach(id=>$('#'+id)?.addEventListener(id==='labelLayout'?'change':'input',updateLabelMeta));
+  $('#labelExportWord')?.addEventListener('click',()=>runLabelExport(exportLabelWord));
+  $('#labelExportExcel')?.addEventListener('click',()=>runLabelExport(exportLabelExcel));
+  $('#labelExportPdf')?.addEventListener('click',()=>runLabelExport(exportLabelPdf));
+  $('#printLabels')?.addEventListener('click',()=>{updateLabelMeta();printLabels();});
   $('#printReport')?.addEventListener('click',printReport); ['rVisit','rDates','rSite'].forEach(id=>$('#'+id)?.addEventListener('input',()=>{$('#reportText').textContent=`IMV #${$('#rVisit').value} · ${$('#rDates').value}`;}));
   $('#dataImport')?.addEventListener('click',()=>$('#filePicker').click());
   $$('[data-ai]').forEach(b=>b.onclick=()=>{$('#aiPrompt').value=b.dataset.ai;}); $('#prepareAi')?.addEventListener('click',prepareAi);
@@ -13,12 +18,28 @@ async function importFiles(files){
     const names=Object.keys(rows[0]||{});
     if(names.includes('Activity')&&names.includes('Actual visit date')) state.visitRows=rows;
     else if(names.includes('Randomization #')||names.some(n=>n.includes('DISP_REGIMEN'))) state.selectRows=rows;
-    else if(names.some(n=>/Kit label/i.test(n))) state.labels=rows.map(r=>r['Kit label']).filter(Boolean).map(String);
   }
   refreshSiteSelector();
   derive();
   saveLocal();
   renderPage();
+}
+async function importLabelFiles(files){
+  if(!files.length)return;
+  try{
+    const all=[]; const sources=[];
+    for(const file of files){const result=await importLabelFile(file);all.push(...result.ids);sources.push(result.source);}
+    state.labels=[...new Set(all.map(x=>String(x).trim()).filter(Boolean))];
+    state.labelSource=sources.join(', ');
+    renderPage();
+    if(!state.labels.length){const s=$('#labelExportStatus');if(s)s.textContent='File loaded, but no label IDs were recognized.';}
+  }catch(err){
+    console.error('Label import failed',err);
+    const msg=err?.message||'Could not import label file.';
+    const s=$('#labelExportStatus');if(s)s.textContent=msg;else alert(msg);
+  }finally{
+    const p=$('#labelFilePicker');if(p)p.value='';
+  }
 }
 async function readWorkbook(file){const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:'array',cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws,{defval:null,raw:false,dateNF:'yyyy-mm-dd'});}
 function cleanDate(v){if(!v)return null; const d=new Date(v); return Number.isNaN(d.getTime())?null:d;}
