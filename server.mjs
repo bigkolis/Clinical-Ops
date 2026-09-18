@@ -3,6 +3,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import authHandler from './api/auth.js';
 import workspaceHandler from './api/workspace.js';
+import snapshotHandler from './api/snapshot.js';
+import operatorHandler from './api/operator.js';
 import healthHandler from './api/health.js';
 
 const PORT=Number(process.env.PORT||3000);
@@ -10,15 +12,20 @@ const ROOT=join(process.cwd(),'dist');
 const handlers=new Map([
   ['/api/auth',authHandler],
   ['/api/workspace',workspaceHandler],
+  ['/api/snapshot',snapshotHandler],
+  ['/api/operator',operatorHandler],
   ['/api/health',healthHandler]
 ]);
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/x-icon','.woff2':'font/woff2'};
 
-function security(res){
+function security(res,isApi=false){
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+  res.setHeader('X-Frame-Options','DENY');
+  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+  if(process.env.NODE_ENV==='production')res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');
+  if(isApi)res.setHeader('Cache-Control','no-store, max-age=0');
 }
 function adapter(res){
   res.status=(code)=>{res.statusCode=code;return res;};
@@ -26,31 +33,33 @@ function adapter(res){
   return res;
 }
 async function body(req){
-  if(req.method==='GET'||req.method==='HEAD') return {};
+  if(req.method==='GET'||req.method==='HEAD')return {};
   let raw='';
-  for await(const chunk of req){raw+=chunk;if(raw.length>1_000_000)throw new Error('Request body too large');}
+  for await(const chunk of req){raw+=chunk;if(raw.length>15_000_000)throw new Error('Request body too large');}
   if(!raw)return {};
   try{return JSON.parse(raw);}catch{return {};}
 }
 async function serveStatic(url,res){
   let pathname=decodeURIComponent(url.pathname);
-  if(pathname==='/'||!extname(pathname)) pathname='/index.html';
+  if(pathname==='/'||!extname(pathname))pathname='/index.html';
   const safe=normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, '');
   let file=join(ROOT,safe);
-  if(!file.startsWith(ROOT)) file=join(ROOT,'index.html');
-  try{const s=await stat(file);if(!s.isFile())throw new Error();}
-  catch{file=join(ROOT,'index.html');}
+  if(!file.startsWith(ROOT))file=join(ROOT,'index.html');
+  try{const s=await stat(file);if(!s.isFile())throw new Error();}catch{file=join(ROOT,'index.html');}
   const data=await readFile(file);
   res.statusCode=200;
   res.setHeader('Content-Type',types[extname(file)]||'application/octet-stream');
+  if(extname(file)==='.html')res.setHeader('Cache-Control','no-cache');
+  else res.setHeader('Cache-Control','public, max-age=3600');
   res.end(data);
 }
 
 const server=http.createServer(async(req,res)=>{
-  security(res);adapter(res);
+  adapter(res);
   try{
     const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
     const handler=handlers.get(url.pathname);
+    security(res,Boolean(handler));
     if(handler){
       req.query=Object.fromEntries(url.searchParams.entries());
       req.body=await body(req);
