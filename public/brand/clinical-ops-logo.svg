@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 170" role="img" aria-labelledby="title desc">
+  <title id="title">Clinical Ops Workspace</title>
+  <desc id="desc">Clinical Ops continuous loop logo</desc>
+  <defs>
+    <linearGradient id="loopA" x1="28" y1="38" x2="280" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4F91"/>
+      <stop offset=".5" stop-color="#119BD0"/>
+      <stop offset="1" stop-color="#28E2C2"/>
+    </linearGradient>
+    <linearGradient id="loopB" x1="90" y1="144" x2="316" y2="38" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#092652"/>
+      <stop offset=".55" stop-color="#0B79C9"/>
+      <stop offset="1" stop-color="#3AF0C7"/>
+    </linearGradient>
+    <filter id="soft" x="-10%" y="-20%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#001633" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <g filter="url(#soft)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M111 41C69 41 38 70 38 105s31 63 73 63c43 0 70-27 97-61 27-35 51-66 91-66 39 0 70 28 70 63 0 36-31 64-70 64-32 0-56-17-77-43" stroke="url(#loopA)" stroke-width="34"/>
+    <path d="M111 168c42 0 70-28 98-63 27-34 51-64 90-64 38 0 70 28 70 63" stroke="url(#loopB)" stroke-width="18" opacity=".86"/>
+  </g>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="405" y="94" font-size="54" font-weight="800" letter-spacing="-2.5" fill="#F7FBFF">Clinical</text>
+    <text x="604" y="94" font-size="54" font-weight="800" letter-spacing="-2.5" fill="#20D8C0">Ops</text>
+    <text x="410" y="130" font-size="17" font-weight="700" letter-spacing="8" fill="#8FA6C2">WORKSPACE</text>
+  </g>
+</svg>
