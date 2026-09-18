@@ -1,4 +1,4 @@
-import { authenticate, actorName, db, dbEnabled, ensureSchema } from '../lib/core.js';
+import { authenticate, actorName, db, dbEnabled, ensureSchema, sameOriginWrite } from '../lib/core.js';
 const allowedStudies=new Set(['CL04041383','CL04041109']);
 const cleanStudy=v=>allowedStudies.has(String(v||''))?String(v):'CL04041383';
 const siteKeys=['Site #','Site','Site No','Site Number'];
@@ -20,6 +20,7 @@ export default async function handler(req,res){
     return res.status(200).json({enabled:true,snapshot:rows[0]||null,history:rows.map(({id,actor,actor_role,created_at})=>({id,actor,actor_role,created_at}))});
   }
   if(req.method==='POST'){
+    if(!sameOriginWrite(req))return res.status(403).json({error:'Cross-site write rejected'});
     const snapshot=req.body?.snapshot;
     if(!snapshot||typeof snapshot!=='object')return res.status(400).json({error:'Snapshot payload required'});
     const safe={
