@@ -1,7 +1,7 @@
-import { db, dbEnabled, ensureSchema, session } from '../lib/core.js';
+import { authenticate, db, dbEnabled, ensureSchema } from '../lib/core.js';
 const STUDY='CL04041383';
 export default async function handler(req,res){
-  const user=session(req); if(!user) return res.status(401).json({error:'Unauthorized'});
+  const user=authenticate(req); if(!user) return res.status(401).json({error:'Unauthorized'});
   if(!dbEnabled()) return res.status(200).json({enabled:false,annotations:[],audit:[]});
   await ensureSchema(); const sql=db(); const site=String(req.query?.site||req.body?.site||'10');
   if(req.method==='GET'){
