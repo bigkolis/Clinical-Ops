@@ -1,0 +1,29 @@
+import { authenticate, actorName, db, dbEnabled, ensureSchema } from '../lib/core.js';
+import { discoverSites, buildPatients, summarizeSite, visitDueState } from '../src/clinical.js';
+const STUDY='CL04041383';
+async function latestSnapshot(sql){const rows=await sql`SELECT snapshot,created_at FROM clinical_ops_snapshots WHERE study_code=${STUDY} ORDER BY created_at DESC LIMIT 1`;return rows[0]||null;}
+async function annotations(sql,site){return sql`SELECT site_id,patient_id,visit_no,note_text,override_date,override_regimen,deviation_reason,deviation_no,deviation_status,deviation_owner,updated_by,updated_at FROM clinical_ops_annotations WHERE study_code=${STUDY} AND site_id=${site}`;}
+function noteMap(rows){const map=new Map();rows.forEach(a=>map.set(`${a.patient_id}|${a.visit_no}`,{note:a.note_text||'',overrideDate:a.override_date?String(a.override_date).slice(0,10):'',overrideRegimen:a.override_regimen||'',deviationReason:a.deviation_reason||'',deviationNo:a.deviation_no||'',deviationStatus:a.deviation_status||'',deviationOwner:a.deviation_owner||'',updatedBy:a.updated_by||''}));return (p,v)=>map.get(`${p}|${v}`)||{};}
+export default async function handler(req,res){
+  const user=authenticate(req);if(!user)return res.status(401).json({error:'Unauthorized'});
+  if(!dbEnabled())return res.status(503).json({error:'Shared database is required for operator tools'});
+  await ensureSchema();const sql=db(),snap=await latestSnapshot(sql);if(!snap)return res.status(409).json({error:'Publish a shared workspace snapshot first'});const source=snap.snapshot||{},selectRows=Array.isArray(source.selectRows)?source.selectRows:[],visitRows=Array.isArray(source.visitRows)?source.visitRows:[];
+  if(req.method==='GET'){
+    const action=String(req.query?.action||'summary'),sites=discoverSites(selectRows,visitRows);
+    if(action==='summary'){
+      const out=[];for(const site of sites){const anns=await annotations(sql,site),s=summarizeSite(site,selectRows,visitRows,noteMap(anns));out.push({site:s.site,patients:s.patients,exceptions:s.exceptions,dueSoon:s.dueSoon,overdue:s.overdue,regimenChanges:s.regimenChanges});}
+      return res.status(200).json({study:STUDY,snapshot_at:snap.created_at,sites:out});
+    }
+    const site=String(req.query?.site||sites[0]||'');if(!site)return res.status(400).json({error:'site is required'});const anns=await annotations(sql,site),nf=noteMap(anns),patients=buildPatients(site,selectRows,visitRows,nf);
+    if(action==='patient'){const id=String(req.query?.patient||''),patient=patients.find(p=>p.id===id);if(!patient)return res.status(404).json({error:'Patient not found'});return res.status(200).json({study:STUDY,site,patient,annotations:anns.filter(a=>a.patient_id===id)});}
+    if(action==='actions'){const items=[];patients.forEach(p=>p.visits.forEach(v=>{const n=nf(p.id,v.no),due=visitDueState(v);if(['Early','Late'].includes(v.window))items.push({type:'window',patient:p.id,visit:v.no,status:v.window,actual:v.actual,min:v.min,max:v.max,deviationNo:n.deviationNo||'',deviationReason:n.deviationReason||''});if(due)items.push({type:'due',patient:p.id,visit:v.no,due});if(v.changed)items.push({type:'regimen',patient:p.id,visit:v.no,before:v.before,regimen:v.regimen});}));return res.status(200).json({study:STUDY,site,items});}
+    return res.status(400).json({error:'Supported actions: summary, patient, actions'});
+  }
+  if(req.method==='POST'){
+    if(user.role!=='milana')return res.status(403).json({error:'Milana role required for operator writes'});
+    const {site,patient,visit,note,deviationReason,deviationNo,deviationStatus,deviationOwner,overrideDate,overrideRegimen}=req.body||{},v=Number(visit);if(!site||!patient||!Number.isInteger(v))return res.status(400).json({error:'site, patient and visit are required'});const actor=actorName(req,user),existing=await sql`SELECT note_text,override_date,override_regimen,deviation_reason,deviation_no,deviation_status,deviation_owner,updated_by,updated_role,updated_at FROM clinical_ops_annotations WHERE study_code=${STUDY} AND site_id=${String(site)} AND patient_id=${String(patient)} AND visit_no=${v}`;if(existing.length)await sql`INSERT INTO clinical_ops_annotation_history(study_code,site_id,patient_id,visit_no,payload,actor) VALUES(${STUDY},${String(site)},${String(patient)},${v},${sql.json(existing[0])},${actor})`;
+    await sql`INSERT INTO clinical_ops_annotations(study_code,site_id,patient_id,visit_no,note_text,override_date,override_regimen,deviation_reason,deviation_no,deviation_status,deviation_owner,updated_by,updated_role,updated_at) VALUES(${STUDY},${String(site)},${String(patient)},${v},${note||null},${overrideDate||null},${overrideRegimen||null},${deviationReason||null},${deviationNo||null},${deviationStatus||null},${deviationOwner||null},${actor},${user.role},NOW()) ON CONFLICT(study_code,site_id,patient_id,visit_no) DO UPDATE SET note_text=COALESCE(EXCLUDED.note_text,clinical_ops_annotations.note_text),override_date=COALESCE(EXCLUDED.override_date,clinical_ops_annotations.override_date),override_regimen=COALESCE(EXCLUDED.override_regimen,clinical_ops_annotations.override_regimen),deviation_reason=COALESCE(EXCLUDED.deviation_reason,clinical_ops_annotations.deviation_reason),deviation_no=COALESCE(EXCLUDED.deviation_no,clinical_ops_annotations.deviation_no),deviation_status=COALESCE(EXCLUDED.deviation_status,clinical_ops_annotations.deviation_status),deviation_owner=COALESCE(EXCLUDED.deviation_owner,clinical_ops_annotations.deviation_owner),updated_by=EXCLUDED.updated_by,updated_role=EXCLUDED.updated_role,updated_at=NOW()`;
+    await sql`INSERT INTO clinical_ops_audit(study_code,site_id,actor,actor_role,action,detail) VALUES(${STUDY},${String(site)},${actor},${user.role},'Semyon scoped operator update',${`${patient} · Visit ${v}`})`;return res.status(200).json({ok:true});
+  }
+  return res.status(405).json({error:'Method not allowed'});
+}
