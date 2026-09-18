@@ -6,21 +6,64 @@
   $$('[data-ai]').forEach(b=>b.onclick=()=>{$('#aiPrompt').value=b.dataset.ai;}); $('#prepareAi')?.addEventListener('click',prepareAi);
 }
 
-async function importFiles(files){ if(!files.length)return; for(const file of files){const rows=await readWorkbook(file); const names=Object.keys(rows[0]||{}); if(names.includes('Activity')&&names.includes('Actual visit date')) state.visitRows=rows; else if(names.includes('Randomization #')||names.some(n=>n.includes('DISP_REGIMEN'))) state.selectRows=rows; else if(names.some(n=>/Kit label/i.test(n))){state.labels=rows.map(r=>r['Kit label']).filter(Boolean).map(String);} } derive(); saveLocal(); renderPage(); }
+async function importFiles(files){
+  if(!files.length)return;
+  for(const file of files){
+    const rows=await readWorkbook(file);
+    const names=Object.keys(rows[0]||{});
+    if(names.includes('Activity')&&names.includes('Actual visit date')) state.visitRows=rows;
+    else if(names.includes('Randomization #')||names.some(n=>n.includes('DISP_REGIMEN'))) state.selectRows=rows;
+    else if(names.some(n=>/Kit label/i.test(n))) state.labels=rows.map(r=>r['Kit label']).filter(Boolean).map(String);
+  }
+  refreshSiteSelector();
+  derive();
+  saveLocal();
+  renderPage();
+}
 async function readWorkbook(file){const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:'array',cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws,{defval:null,raw:false,dateNF:'yyyy-mm-dd'});}
 function cleanDate(v){if(!v)return null; const d=new Date(v); return Number.isNaN(d.getTime())?null:d;}
 function regimen(row,no){const [a,b]=REGCOL[no]; return String(row?.[b]||row?.[a]||'').trim();}
+function selectPatientId(row){return String(row?.['Столбец1']??row?.['Screening #']??row?.['Randomization #']??'').trim();}
+function visitPatientId(row){return String(row?.['Screening #']??row?.['Randomization #']??row?.['Столбец1']??'').trim();}
 function derive(){
-  const site=String(state.site), select=state.selectRows.filter(r=>String(r['Site #']??'')===site || String(r['Столбец1']??'').startsWith(site+'-'));
-  const byPatient=new Map(); select.forEach(r=>{const id=String(r['Столбец1']||r['Randomization #']||'').trim(); if(id)byPatient.set(id,r);});
-  if(!byPatient.size && site==='10') Object.keys(BASELINE).forEach(id=>byPatient.set(id,{}));
-  const visitMap=new Map(); state.visitRows.filter(r=>String(r['Site #']??'')===site).forEach(r=>visitMap.set(`${String(r['Screening #']||'').trim()}|${String(r.Activity||'').trim()}`,r));
-  state.patients=[...byPatient].map(([id,row])=>{let prev=''; const visits=VISITS.map(([no,week,day,activity])=>{const vr=visitMap.get(`${id}|${activity}`)||{}; let rg=regimen(row,no); const n=noteFor(id,no); if(n.overrideRegimen)rg=n.overrideRegimen; const actual=cleanDate(n.overrideDate||vr['Actual visit date']), min=cleanDate(vr['Scheduled min']), max=cleanDate(vr['Scheduled max']); let window='Pending'; if(actual&&min&&max)window=actual<min?'Early':actual>max?'Late':'Within'; const before=prev||rg; const changed=Boolean((no===6||no===9)&&prev&&rg&&prev!==rg); if(rg)prev=rg; return {no,week,day,activity,actual,min,max,window,regimen:rg,before,changed};}); return {id,baseline:BASELINE[id]??'—',status:String(row['Status']||'Unknown'),visits,violations:visits.filter(v=>v.window==='Early'||v.window==='Late').length};}).sort((a,b)=>a.id.localeCompare(b.id));
+  discoverSites();
+  const site=String(state.site||'');
+  if(!site){state.patients=[];renderPage();return;}
+
+  const select=state.selectRows.filter(r=>rowSite(r)===site);
+  const visitsForSite=state.visitRows.filter(r=>rowSite(r)===site);
+  const byPatient=new Map();
+  select.forEach(r=>{const id=selectPatientId(r); if(id)byPatient.set(id,r);});
+  visitsForSite.forEach(r=>{const id=visitPatientId(r); if(id&&!byPatient.has(id))byPatient.set(id,{});});
+
+  const visitMap=new Map();
+  visitsForSite.forEach(r=>{
+    const id=visitPatientId(r), activity=String(r.Activity||'').trim();
+    if(id&&activity)visitMap.set(`${id}|${activity}`,r);
+  });
+
+  state.patients=[...byPatient].map(([id,row])=>{
+    let prev='';
+    const visits=VISITS.map(([no,week,day,activity])=>{
+      const vr=visitMap.get(`${id}|${activity}`)||{};
+      let rg=regimen(row,no);
+      const n=noteFor(id,no);
+      if(n.overrideRegimen)rg=n.overrideRegimen;
+      const actual=cleanDate(n.overrideDate||vr['Actual visit date']), min=cleanDate(vr['Scheduled min']), max=cleanDate(vr['Scheduled max']);
+      let window='Pending';
+      if(actual&&min&&max)window=actual<min?'Early':actual>max?'Late':'Within';
+      const before=prev||rg;
+      const changed=Boolean((no===6||no===9)&&prev&&rg&&prev!==rg);
+      if(rg)prev=rg;
+      return {no,week,day,activity,actual,min,max,window,regimen:rg,before,changed};
+    });
+    return {id,baseline:BASELINE[id]??'—',status:String(row['Status']||'Unknown'),visits,violations:visits.filter(v=>v.window==='Early'||v.window==='Late').length};
+  }).sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true,sensitivity:'base'}));
   renderPage();
 }
 
 async function saveNote(ref){const [patient,visit]=ref.split('|'); const note=$(`[data-note="${ref}"]`)?.value||'', overrideDate=$(`[data-odate="${ref}"]`)?.value||'', overrideRegimen=$(`[data-oreg="${ref}"]`)?.value||''; state.notes[key(patient,visit)]={note,overrideDate,overrideRegimen}; saveLocal(); derive(); try{await authFetch('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site:state.site,patient,visit:Number(visit),note,overrideDate,overrideRegimen,action:'Saved note / working override'})}); await syncWorkspace(false);}catch{} }
-async function syncWorkspace(rerender=true){try{const r=await authFetch(`/api/workspace?site=${encodeURIComponent(state.site)}`); if(!r.ok)return; const j=await r.json(); state.db=Boolean(j.enabled); (j.annotations||[]).forEach(a=>state.notes[`${a.site_id}|${a.patient_id}|${a.visit_no}`]={note:a.note_text||'',overrideDate:a.override_date?String(a.override_date).slice(0,10):'',overrideRegimen:a.override_regimen||''}); state.audit=j.audit||[]; saveLocal(); derive(); if(rerender)renderPage();}catch{state.db=false;}}
+async function syncWorkspace(rerender=true){if(!state.site)return;try{const r=await authFetch(`/api/workspace?site=${encodeURIComponent(state.site)}`); if(!r.ok)return; const j=await r.json(); state.db=Boolean(j.enabled); (j.annotations||[]).forEach(a=>state.notes[`${a.site_id}|${a.patient_id}|${a.visit_no}`]={note:a.note_text||'',overrideDate:a.override_date?String(a.override_date).slice(0,10):'',overrideRegimen:a.override_regimen||''}); state.audit=j.audit||[]; saveLocal(); derive(); if(rerender)renderPage();}catch{state.db=false;}}
 function saveLocal(){localStorage.setItem('clinical_ops_notes',JSON.stringify(state.notes));}
 function loadLocal(){try{state.notes=JSON.parse(localStorage.getItem('clinical_ops_notes')||'{}');}catch{state.notes={};}}
 
