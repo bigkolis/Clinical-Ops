@@ -5,10 +5,13 @@
   "type": "module",
   "engines": { "node": ">=20.19.0" },
   "scripts": {
+    "assemble": "node scripts/assemble.mjs",
+    "predev": "npm run assemble",
     "dev": "vite --host 0.0.0.0",
+    "prebuild": "npm run assemble",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "node --check src/main.js && node --check api/auth.js && node --check api/workspace.js && node --check api/health.js && node --check lib/core.js"
+    "check": "npm run assemble && node --check src/main.js && node --check api/auth.js && node --check api/workspace.js && node --check api/health.js && node --check lib/core.js"
   },
   "dependencies": {
     "postgres": "3.4.7",
