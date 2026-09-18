@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Clinical Ops">
+  <defs>
+    <linearGradient id="a" x1="28" y1="38" x2="152" y2="145" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2059A5"/><stop offset=".52" stop-color="#11A4D9"/><stop offset="1" stop-color="#35EDC7"/>
+    </linearGradient>
+    <linearGradient id="b" x1="35" y1="148" x2="152" y2="43" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#08234E"/><stop offset=".58" stop-color="#087CCB"/><stop offset="1" stop-color="#41F0C9"/>
+    </linearGradient>
+  </defs>
+  <path d="M57 52c-24 0-42 17-42 38s18 38 42 38c25 0 41-16 57-37 16-21 30-39 53-39 22 0 40 17 40 38 0 22-18 39-40 39-18 0-32-10-44-25" fill="none" stroke="url(#a)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M57 128c25 0 41-16 57-37 16-20 30-39 53-39 22 0 40 17 40 38" fill="none" stroke="url(#b)" stroke-width="12" stroke-linecap="round" opacity=".9"/>
+</svg>
