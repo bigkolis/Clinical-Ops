@@ -17,11 +17,12 @@
   }catch{}
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  let snapshotTimer=null;
+  let snapshotTimer=null,authCheckBusy=false,authVerified=false;
 
   function enhanceLogin(){
     const form=document.querySelector('#loginForm');
     if(!form||form.dataset.enhanced==='1')return;
+    authVerified=false;
     form.dataset.enhanced='1';
     const login=form.querySelector('input[name="login"]');
     const initials=form.querySelector('input[name="initials"]');
@@ -29,7 +30,7 @@
     const loginLabel=login.closest('label');
     if(loginLabel){loginLabel.classList.add('raw-login-field');loginLabel.hidden=true;}
     const initialsLabel=initials?.closest('label');
-    if(initialsLabel){initialsLabel.classList.add('staff-initials-field');initialsLabel.querySelector('small')?.remove();initialsLabel.childNodes[0].textContent='Your initials ';}
+    if(initialsLabel){initialsLabel.classList.add('staff-initials-field');initialsLabel.querySelector('small')?.remove();if(initialsLabel.childNodes[0])initialsLabel.childNodes[0].textContent='Your initials ';}
 
     const tabs=document.createElement('div');
     tabs.className='login-role-tabs';
@@ -63,6 +64,23 @@
     },true);
   }
 
+  async function verifyServerSession(){
+    if(authVerified||authCheckBusy||!document.body.className.match(/role-(milana|staff)/))return;
+    authCheckBusy=true;
+    try{
+      const r=await fetch('/api/auth',{credentials:'same-origin',cache:'no-store'}),j=await r.json().catch(()=>({}));
+      if(!r.ok||!j.authenticated){
+        document.body.className='login-page';
+        location.reload();
+        return;
+      }
+      authVerified=true;
+    }catch{
+      document.body.className='login-page';
+      location.reload();
+    }finally{authCheckBusy=false;}
+  }
+
   async function injectSecurityAudit(){
     if(!document.body.classList.contains('role-milana'))return;
     const view=document.querySelector('#view');
@@ -74,7 +92,7 @@
     try{
       const r=await fetch('/api/auth?action=audit',{credentials:'same-origin',cache:'no-store'}),j=await r.json();
       const mode=section.querySelector('.security-mode');
-      if(mode)mode.textContent=j.securityMode==='test-only-no-db'?'Test mode':j.securityMode==='database-derived'?'DB-secured session':'Secure session';
+      if(mode)mode.textContent=j.securityMode==='test-only-no-db'?'Test mode · no shared DB':j.securityMode==='database-derived'?'DB-secured session':'Secure session';
       const list=section.querySelector('.security-audit-list');
       if(!j.enabled){list.innerHTML='<div class="empty">Connect the OnReza PostgreSQL database to enable persistent access audit.</div>';return;}
       list.innerHTML=(j.events||[]).slice(0,100).map(x=>{
@@ -90,7 +108,7 @@
 
   function polishLabels(){
     const btn=document.querySelector('#printLabels');
-    if(btn)btn.textContent='Print sheet (A4)';
+    if(btn&&btn.textContent!=='Print sheet (A4)')btn.textContent='Print sheet (A4)';
   }
 
   function scheduleSnapshot(){
@@ -105,6 +123,7 @@
     const logout=e.target.closest?.('#logoutBtn');
     if(logout){
       e.preventDefault();e.stopImmediatePropagation();
+      authVerified=false;
       fetch('/api/auth?action=logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'})
         .catch(()=>{})
         .finally(()=>location.reload());
@@ -122,11 +141,18 @@
     finally{setTimeout(()=>root?.classList.remove('label-sheet-print'),1200);}
   };
 
-  const observer=new MutationObserver(()=>{
-    enhanceLogin();
-    polishLabels();
-    injectSecurityAudit();
-  });
+  let scheduled=false;
+  const refreshEnhancements=()=>{
+    if(scheduled)return;scheduled=true;
+    requestAnimationFrame(()=>{
+      scheduled=false;
+      enhanceLogin();
+      polishLabels();
+      verifyServerSession();
+      injectSecurityAudit();
+    });
+  };
+  const observer=new MutationObserver(refreshEnhancements);
   observer.observe(document.documentElement,{childList:true,subtree:true});
-  enhanceLogin();
+  refreshEnhancements();
 })();
