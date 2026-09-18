@@ -16,13 +16,19 @@ const dateKey=d=>d?new Date(d).toISOString().slice(0,10):'';
 const fmt=d=>d?new Date(d).toLocaleDateString('ru-RU'):'—';
 const key=(p,v)=>`${state.site}|${p}|${v}`;
 const noteFor=(p,v)=>state.notes[key(p,v)]||{};
+const authToken=()=>sessionStorage.getItem('clinical_ops_auth')||'';
+async function authFetch(url,options={}){
+  const headers=new Headers(options.headers||{});
+  const token=authToken();
+  if(token) headers.set('Authorization',`Basic ${token}`);
+  return fetch(url,{...options,headers});
+}
 
 async function boot(){
   let user=null;
-  try{ const r=await fetch('/api/auth'); const j=await r.json(); if(j.authenticated) user=j.user; }catch{}
-  if(!user && new URLSearchParams(location.search).get('preview')==='1') user={login:'preview',name:'Milana Preview',role:'milana',preview:true};
+  try{ const r=await authFetch('/api/auth'); const j=await r.json(); if(j.authenticated) user=j.user; }catch{}
   state.user=user;
-  if(user){ loadLocal(); renderShell(); demoData(); await syncWorkspace(); } else renderLogin();
+  if(user){ loadLocal(); renderShell(); await syncWorkspace(); } else { sessionStorage.removeItem('clinical_ops_auth'); renderLogin(); }
 }
 
 function renderLogin(){
@@ -34,8 +40,8 @@ function renderLogin(){
     <section class="login-panel"><form id="loginForm" class="login-card"><div class="kicker">SECURE WORKSPACE</div><h2>Sign in</h2><p>Use the Staff account for daily work or Milana account for operator/AI access.</p>
       <label>Login<input name="login" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <button class="btn primary wide">Enter workspace</button><div id="loginError" class="login-error"></div>
-      <div class="preview-help">For local UI testing: append <code>?preview=1</code>.</div></form></section></main>`;
-  $('#loginForm').onsubmit=async e=>{e.preventDefault(); const fd=new FormData(e.currentTarget); const r=await fetch('/api/auth?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:fd.get('login'),password:fd.get('password')})}); const j=await r.json(); if(!r.ok){$('#loginError').textContent=j.error||'Login failed';return;} state.user=j.user; renderShell(); demoData(); await syncWorkspace();};
+    </form></section></main>`;
+  $('#loginForm').onsubmit=async e=>{e.preventDefault(); const fd=new FormData(e.currentTarget); const login=String(fd.get('login')||'').trim(), password=String(fd.get('password')||''); const r=await fetch('/api/auth?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password})}); const j=await r.json(); if(!r.ok){$('#loginError').textContent=j.error||'Login failed';return;} sessionStorage.setItem('clinical_ops_auth',btoa(`${login}:${password}`)); state.user=j.user; loadLocal(); renderShell(); await syncWorkspace();};
 }
 
 function renderShell(){
@@ -50,7 +56,7 @@ function renderShell(){
 }
 function nav(page,label,icon){return `<button class="nav-item ${state.page===page?'active':''}" data-page="${page}"><span>${icon}</span>${label}</button>`;}
 function initials(name){return String(name||'U').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();}
-async function logout(){ if(!state.user.preview) await fetch('/api/auth?action=logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); state.user=null; localStorage.removeItem('clinical_ops_user'); renderLogin(); }
+function logout(){ sessionStorage.removeItem('clinical_ops_auth'); state.user=null; renderLogin(); }
 
 function renderPage(){ const v=$('#view'); if(!v)return; const map={overview,patients,actions,labels,reports,data,ai}; v.innerHTML=(map[state.page]||overview)(); bindPage(); }
 function pageHead(kicker,title,sub,actions=''){return `<div class="page-head"><div>
