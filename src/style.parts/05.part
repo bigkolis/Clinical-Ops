@@ -1,0 +1,10 @@
+
+/* Brand system */
+.brand-mark{background:transparent url('/brand/clinical-ops-mark.svg') center/contain no-repeat!important;color:transparent!important;font-size:0!important;border-radius:0!important;box-shadow:none!important;flex:0 0 auto}
+.login-art>.brand{width:min(430px,88%);height:96px;background:url('/brand/clinical-ops-logo.svg') left center/contain no-repeat;gap:0}
+.login-art>.brand>*{visibility:hidden}
+.brand.side .brand-mark{width:42px;height:42px}
+.brand.side strong{font-weight:850;letter-spacing:-.02em}
+.brand.side small{color:#8ca0b9}
+@media(max-width:1000px){.brand.side .brand-mark{width:38px;height:38px}.brand.side{justify-content:center;padding-left:0;padding-right:0}}
+@media(max-width:650px){.login-art>.brand{width:280px;height:66px}.login-art{background:radial-gradient(circle at 30% 10%,rgba(32,216,192,.14),transparent 30%),linear-gradient(145deg,#07152f,#102b49)}}
