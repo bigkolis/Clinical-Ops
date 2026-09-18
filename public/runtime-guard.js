@@ -16,7 +16,7 @@
     };
   }catch{}
 
-  const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[m]));
   let snapshotTimer=null,authCheckBusy=false,authVerified=false;
 
   function enhanceLogin(){
@@ -30,7 +30,11 @@
     const loginLabel=login.closest('label');
     if(loginLabel){loginLabel.classList.add('raw-login-field');loginLabel.hidden=true;}
     const initialsLabel=initials?.closest('label');
-    if(initialsLabel){initialsLabel.classList.add('staff-initials-field');initialsLabel.querySelector('small')?.remove();if(initialsLabel.childNodes[0])initialsLabel.childNodes[0].textContent='Your initials ';}
+    if(initialsLabel){
+      initialsLabel.classList.add('staff-initials-field');
+      initialsLabel.querySelector('small')?.remove();
+      if(initialsLabel.childNodes[0])initialsLabel.childNodes[0].textContent='Your initials ';
+    }
 
     const tabs=document.createElement('div');
     tabs.className='login-role-tabs';
@@ -44,7 +48,12 @@
       const staff=role==='staff';
       login.value=staff?'clinical-ops':'milana';
       tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.role===role));
-      if(initialsLabel){initialsLabel.hidden=!staff;initials.style.display=staff?'':'none';initials.required=staff;if(!staff)initials.value='';}
+      if(initialsLabel){
+        initialsLabel.hidden=!staff;
+        initials.style.display=staff?'':'none';
+        initials.required=staff;
+        if(!staff)initials.value='';
+      }
       hint.textContent=staff?'Staff must enter their own initials. They are bound to the signed session and audit trail.':'Milana account includes AI/operator and security-audit controls.';
       try{localStorage.setItem('clinical_ops_login_role',role);}catch{}
     };
@@ -57,7 +66,8 @@
         const value=String(initials?.value||'').trim();
         if(value.length<2){
           e.preventDefault();e.stopImmediatePropagation();
-          const error=form.querySelector('#loginError');if(error)error.textContent='Staff initials are required for the security audit.';
+          const error=form.querySelector('#loginError');
+          if(error)error.textContent='Staff initials are required for the security audit.';
           initials?.focus();
         }
       }
@@ -81,43 +91,125 @@
     }finally{authCheckBusy=false;}
   }
 
+  function securityEventHtml(x){
+    const when=x.created_at?new Date(x.created_at).toLocaleString():'—';
+    const who=x.role==='staff'?`${x.initials||'NO INITIALS'} · Staff`:(x.login||'Milana');
+    const tone=x.success?'ok':'fail';
+    return `<div class="security-event ${tone}"><span>${esc(when)}</span><strong>${esc(who)}</strong><b>${esc(x.event||'login')}${x.success?'':' failed'}</b><small>${esc((x.user_agent||'').slice(0,90))}</small></div>`;
+  }
+
+  async function loadSecurityAudit(root){
+    const mode=root.querySelector('.security-mode');
+    const list=root.querySelector('.security-audit-list');
+    if(!list)return;
+    list.innerHTML='<div class="empty">Loading sign-in history…</div>';
+    try{
+      const r=await fetch('/api/auth?action=audit',{credentials:'same-origin',cache:'no-store'}),j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(j.error||'Could not load access audit');
+      if(mode)mode.textContent=j.securityMode==='test-only-no-db'?'Test mode · no shared DB':j.securityMode==='database-derived'?'DB-secured session':'Secure session';
+      if(!j.enabled){
+        list.innerHTML='<div class="empty">Persistent audit will appear here after the shared PostgreSQL database is connected.</div>';
+        return;
+      }
+      list.innerHTML=(j.events||[]).slice(0,100).map(securityEventHtml).join('')||'<div class="empty">No access events yet.</div>';
+    }catch(err){
+      list.innerHTML=`<div class="empty">${esc(err?.message||'Could not load access audit.')}</div>`;
+    }
+  }
+
   async function injectSecurityAudit(){
     if(!document.body.classList.contains('role-milana'))return;
     const view=document.querySelector('#view');
     if(!view||!view.textContent.includes('Semyon AI Operator')||document.querySelector('#securityAudit'))return;
     const section=document.createElement('section');
     section.id='securityAudit';section.className='card security-audit-card';
-    section.innerHTML='<div class="card-head"><div><span class="eyebrow">SECURITY</span><h2>User access audit</h2></div><span class="security-mode">Loading…</span></div><div class="security-audit-list"><div class="empty">Loading sign-in history…</div></div>';
+    section.innerHTML='<div class="card-head"><div><span class="eyebrow">SECURITY</span><h2>User access audit</h2></div><span class="security-mode">Loading…</span></div><div class="security-audit-list"></div>';
     view.appendChild(section);
-    try{
-      const r=await fetch('/api/auth?action=audit',{credentials:'same-origin',cache:'no-store'}),j=await r.json();
-      const mode=section.querySelector('.security-mode');
-      if(mode)mode.textContent=j.securityMode==='test-only-no-db'?'Test mode · no shared DB':j.securityMode==='database-derived'?'DB-secured session':'Secure session';
-      const list=section.querySelector('.security-audit-list');
-      if(!j.enabled){list.innerHTML='<div class="empty">Connect the OnReza PostgreSQL database to enable persistent access audit.</div>';return;}
-      list.innerHTML=(j.events||[]).slice(0,100).map(x=>{
-        const when=x.created_at?new Date(x.created_at).toLocaleString():'—';
-        const who=x.role==='staff'?`${x.initials||'NO INITIALS'} · Staff`:(x.login||'Milana');
-        const tone=x.success?'ok':'fail';
-        return `<div class="security-event ${tone}"><span>${esc(when)}</span><strong>${esc(who)}</strong><b>${esc(x.event||'login')}${x.success?'':' failed'}</b><small>${esc((x.user_agent||'').slice(0,90))}</small></div>`;
-      }).join('')||'<div class="empty">No access events yet.</div>';
-    }catch{
-      section.querySelector('.security-audit-list').innerHTML='<div class="empty">Could not load access audit.</div>';
+    await loadSecurityAudit(section);
+  }
+
+  function closeSecurityPanel(){
+    document.querySelector('#securityPanel')?.remove();
+    document.body.classList.remove('admin-panel-open');
+    document.querySelector('#securityAuditNav')?.classList.remove('active');
+  }
+
+  async function openSecurityPanel(){
+    if(!document.body.classList.contains('role-milana'))return;
+    let panel=document.querySelector('#securityPanel');
+    if(!panel){
+      panel=document.createElement('section');
+      panel.id='securityPanel';panel.className='admin-security-panel';
+      panel.innerHTML=`<header class="admin-security-head"><div><span class="eyebrow">MILANA · SECURITY</span><h1>Security audit</h1><p>Sign-ins, failed attempts and staff identity trail.</p></div><button type="button" class="admin-security-close" aria-label="Close">×</button></header><div class="admin-security-body"><div class="security-summary"><span>Access log</span><b class="security-mode">Loading…</b></div><div class="security-audit-list"></div></div>`;
+      document.body.appendChild(panel);
+      panel.querySelector('.admin-security-close').onclick=closeSecurityPanel;
+      panel.addEventListener('click',e=>{if(e.target===panel)closeSecurityPanel();});
     }
+    document.body.classList.add('admin-panel-open');
+    document.querySelectorAll('.sidebar .nav-item').forEach(x=>x.classList.remove('active'));
+    document.querySelector('#securityAuditNav')?.classList.add('active');
+    window.scrollTo({top:0,left:0,behavior:'auto'});
+    await loadSecurityAudit(panel);
+  }
+
+  function activateSemyon(){
+    closeSecurityPanel();
+    const button=document.querySelector('.nav-item[data-page="ai"]');
+    if(!button)return;
+    if(typeof button.onclick==='function')button.onclick.call(button);
+    else button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+    document.querySelectorAll('.sidebar .nav-item').forEach(x=>x.classList.toggle('active',x===button));
+    requestAnimationFrame(()=>window.scrollTo({top:0,left:0,behavior:'auto'}));
   }
 
   function ensureSecurityNav(){
     if(!document.body.classList.contains('role-milana'))return;
     const nav=document.querySelector('.sidebar nav');
-    if(!nav||nav.querySelector('#securityAuditNav'))return;
-    const button=document.createElement('button');
-    button.id='securityAuditNav';button.className='nav-item';button.type='button';
-    button.innerHTML='<span>⛨</span>Security';
-    button.addEventListener('click',()=>{
-      document.querySelector('.nav-item[data-page="ai"]')?.click();
-      setTimeout(async()=>{await injectSecurityAudit();document.querySelector('#securityAudit')?.scrollIntoView({behavior:'smooth',block:'start'});},120);
+    if(!nav)return;
+    let button=nav.querySelector('#securityAuditNav');
+    if(!button){
+      button=document.createElement('button');
+      button.id='securityAuditNav';button.className='nav-item';button.type='button';
+      button.innerHTML='<span>⛨</span>Security';
+      nav.appendChild(button);
+    }
+    button.onclick=e=>{e?.preventDefault?.();openSecurityPanel();};
+  }
+
+  function wireMobileAdminNav(){
+    const nav=document.querySelector('.sidebar nav');
+    if(!nav||nav.dataset.mobileAdminWired==='1')return;
+    nav.dataset.mobileAdminWired='1';
+    let start=null;
+    nav.addEventListener('pointerdown',e=>{
+      if(e.pointerType!=='touch')return;
+      const b=e.target.closest('.nav-item[data-page="ai"],#securityAuditNav');
+      if(!b)return;
+      start={id:e.pointerId,x:e.clientX,y:e.clientY,target:b};
+    },{passive:true});
+    nav.addEventListener('pointerup',e=>{
+      if(!start||e.pointerId!==start.id)return;
+      const dx=Math.abs(e.clientX-start.x),dy=Math.abs(e.clientY-start.y),b=start.target;
+      start=null;
+      if(dx>12||dy>12)return;
+      e.preventDefault();
+      if(b.id==='securityAuditNav')openSecurityPanel();
+      else activateSemyon();
+    },{passive:false});
+    nav.addEventListener('pointercancel',()=>{start=null;},{passive:true});
+  }
+
+  function syncNavClicks(){
+    const nav=document.querySelector('.sidebar nav');
+    if(!nav||nav.dataset.scrollFixWired==='1')return;
+    nav.dataset.scrollFixWired='1';
+    nav.addEventListener('click',e=>{
+      const b=e.target.closest('.nav-item');
+      if(!b)return;
+      if(b.id==='securityAuditNav')return;
+      document.querySelectorAll('.sidebar .nav-item').forEach(x=>x.classList.toggle('active',x===b));
+      requestAnimationFrame(()=>window.scrollTo({top:0,left:0,behavior:'auto'}));
     });
-    nav.appendChild(button);
   }
 
   function polishLabels(){
@@ -138,6 +230,7 @@
     if(logout){
       e.preventDefault();e.stopImmediatePropagation();
       authVerified=false;
+      closeSecurityPanel();
       fetch('/api/auth?action=logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'})
         .catch(()=>{})
         .finally(()=>location.reload());
@@ -145,6 +238,8 @@
     }
     if(e.target.closest?.('[data-apply-import],#applyAllImports'))scheduleSnapshot();
   },true);
+
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSecurityPanel();});
 
   const nativePrint=window.print.bind(window);
   window.print=()=>{
@@ -164,6 +259,8 @@
       polishLabels();
       verifyServerSession();
       ensureSecurityNav();
+      wireMobileAdminNav();
+      syncNavClicks();
       injectSecurityAudit();
     });
   };
